@@ -5,6 +5,8 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -52,7 +54,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Copy-Item "dist/YT-DLP GUI.exe" "artifacts/YT-DLP_GUI.exe" -Force
-          Compress-Archive -Path "dist/YT-DLP GUI.exe","dist/ffmpeg.exe","dist/bin" -DestinationPath "artifacts/YT-DLP_GUI_portable_${env:GITHUB_REF_NAME}.zip" -Force
+          $tag = $env:GITHUB_REF_NAME; if (-not $tag) { $tag = "${{ github.event.release.tag_name }}" }
+          Compress-Archive -Path "dist/YT-DLP GUI.exe","dist/ffmpeg.exe","dist/bin" -DestinationPath "artifacts/YT-DLP_GUI_portable_$tag.zip" -Force
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
