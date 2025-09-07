@@ -35,6 +35,42 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.10.*
 
+      - name: Write version files
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.tag }}"; if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          if (-not $tag) { $tag = "${{ github.event.release.tag_name }}" }
+          if (-not $tag) { $tag = "v0.0.0" }
+          $ver = $tag.TrimStart('v')
+          Set-Content -Path app_version.txt -Value $tag -Encoding utf8
+          @"
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=($($ver -replace '\.',','), 0),
+    prodvers=($($ver -replace '\.',','), 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable('040904B0', [
+        StringStruct('CompanyName', 'Nikitzima'),
+        StringStruct('FileDescription', 'YT-DLP GUI'),
+        StringStruct('FileVersion', '$ver'),
+        StringStruct('ProductName', 'YT-DLP GUI'),
+        StringStruct('ProductVersion', '$ver'),
+        StringStruct('OriginalFilename', 'YT-DLP GUI.exe')
+      ])
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+"@ | Set-Content -Path file_version_info.txt -Encoding utf8
+
       - name: Download ffmpeg.exe (for bundling)
         shell: pwsh
         run: |

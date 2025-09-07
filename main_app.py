@@ -41,6 +41,18 @@ APP_NAME = "YT-DLP GUI"
 WIDTH = 900
 HEIGHT = 700
 
+def load_app_version():
+    try:
+        p = resource_path("app_version.txt")
+        if os.path.exists(p):
+            with open(p, 'r', encoding='utf-8') as f:
+                v = f.read().strip()
+                if v:
+                    return v
+    except Exception:
+        pass
+    return "dev"
+
 # --- Р¤РЈРќРљР¦РРЇ Р”Р›РЇ РџРћР›РЈР§Р•РќРРЇ РџР РђР’РР›Р¬РќРћР“Рћ РџРЈРўР Рљ Р Р•РЎРЈР РЎРђРњ ---
 def resource_path(relative_path):
     """ РџРѕР»СѓС‡Р°РµС‚ Р°Р±СЃРѕР»СЋС‚РЅС‹Р№ РїСѓС‚СЊ Рє СЂРµСЃСѓСЂСЃСѓ, СЂР°Р±РѕС‚Р°РµС‚ РєР°Рє РґР»СЏ СЃРєСЂРёРїС‚Р°, С‚Р°Рє Рё РґР»СЏ PyInstaller """
@@ -356,6 +368,11 @@ class App(ctk.CTk):
 
     def __init__(self, initial_settings: dict):
         super().__init__()
+        # Set dynamic title with version (from app_version.txt when built by CI)
+        try:
+            self.title(f"{APP_NAME} {load_app_version()}")
+        except Exception:
+            pass
         self.logger, self.log_file_path = setup_file_logger()
         self.logger.info(f"App start: {APP_NAME}")
         self.logger.info(f"Python={sys.version.split()[0]} | OS={platform.system()} {platform.release()}")
@@ -371,6 +388,12 @@ class App(ctk.CTk):
         self.download_widget = None
         self.quick_override = None
         self.last_error_line = ""
+        # Queue and history
+        self.current_output_file = None
+        self.pending_queue = []  # list of URLs
+        self.download_history = []  # list of dicts: {title,path,status,error?}
+        self.queue_overlay = None
+        self.queue_add_button = None
         self.active_settings_frame = self.SETTINGS_VIDEO
         self.active_info_frame = self.INFO_WHAT_IS_THIS
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -521,6 +544,10 @@ class App(ctk.CTk):
         self.path_label.grid(row=0, column=1, sticky="ew")
         self.download_button = ctk.CTkButton(url_frame, height=40, command=self.start_download_thread, font=ctk.CTkFont(size=14, weight="bold"))
         self.download_button.grid(row=1, column=2, padx=10, pady=10, sticky="e")
+        # Shown only during active download to enqueue next URLs
+        self.queue_add_button = ctk.CTkButton(url_frame, height=40, text="+ Queue", command=self.add_to_queue, font=ctk.CTkFont(size=14))
+        self.queue_add_button.grid(row=1, column=3, padx=(10, 0), pady=10)
+        self.queue_add_button.grid_remove()
         self.mode_segmented_button = ctk.CTkSegmentedButton(main_block, variable=self.download_mode_var, height=45, font=ctk.CTkFont(size=14))
         self.mode_segmented_button.pack(pady=10, fill="x")
         quick_row = ctk.CTkFrame(main_block, fg_color="transparent")
@@ -873,6 +900,13 @@ class App(ctk.CTk):
             self.logger.error(f"[yt-dlp-stderr] {line}")
             self.last_error_line = line
             return
+        # Track output file path from yt-dlp logs
+        m_dest = re.search(r"\[download\] Destination: (.+)", line)
+        if m_dest:
+            self.current_output_file = m_dest.group(1).strip().strip('"')
+        m_merge = re.search(r"\[Merger\] Merging formats into \"(.+)\"", line)
+        if m_merge:
+            self.current_output_file = m_merge.group(1).strip().strip('"')
         match = re.search(r"\[download\]\s+(?P<percent>[\d\.]+)%\s+of\s+\~?\s*(?P<size>[\d\.]+\w+)(?:\s+at\s+(?P<speed>[\d\.]+\w+/s))?(?:\s+ETA\s+(?P<eta>[\d\:]+))?", line)
         if match:
             data = match.groupdict()
@@ -940,10 +974,12 @@ class App(ctk.CTk):
             if stderr_output: self._process_download_output(stderr_output, 'stderr')
             if self.download_cancelled.is_set():
                 self.after(0, lambda: self.download_widget and self.download_widget.set_cancelled())
+                self.after(0, lambda: self.download_widget and hasattr(self.download_widget, 'icon_label') and self.download_widget.icon_label.configure(text="⏹"))
                 self.after(1500, self.set_ui_to_idle_mode)
                 return
             if self.download_process.returncode == 0:
                 self.after(0, lambda: self.download_widget and self.download_widget.set_complete())
+                self.after(0, lambda: self.download_widget and hasattr(self.download_widget, 'icon_label') and self.download_widget.icon_label.configure(text="✓"))
                 self.after(1500, self.set_ui_to_idle_mode)
             else: raise Exception(self.last_error_line or "Unknown download error")
         except FileNotFoundError:
@@ -955,6 +991,7 @@ class App(ctk.CTk):
                 error_msg = str(e).split('ERROR: ')[-1].strip()
                 self.logger.error(f"Download failed: {error_msg}")
                 self.after(0, lambda: self.download_widget and self.download_widget.set_error(error_msg[:100]))
+                self.after(0, lambda: self.download_widget and hasattr(self.download_widget, 'icon_label') and self.download_widget.icon_label.configure(text="✕"))
                 self.after(4000, self.set_ui_to_idle_mode)
         finally:
             self.quick_override = None; self.download_process = None
@@ -963,19 +1000,106 @@ class App(ctk.CTk):
     def set_ui_to_download_mode(self):
         self.download_button.configure(text=self.lang.get("cancel_button"))
         if self.download_widget: self.download_widget.destroy()
-        self.download_widget = DownloadQueueItem(self, lang_manager=self.lang)
-        self.download_widget.place(relx=0.98, rely=0.03, anchor="ne")
+        # Create overlay on Home tab (auto-hidden on other tabs)
+        try:
+            parent = self.home_tab
+        except Exception:
+            parent = self
+        if not getattr(self, 'queue_overlay', None) or not self.queue_overlay.winfo_exists():
+            self.queue_overlay = ctk.CTkFrame(parent, fg_color="transparent")
+            self.queue_overlay.place(relx=0.98, rely=0.03, anchor="ne")
+        self.download_widget = DownloadQueueItem(self.queue_overlay, lang_manager=self.lang)
+        self.download_widget.grid(row=0, column=0, sticky="ew")
+        if self.queue_add_button:
+            self.queue_add_button.grid()
+        self._render_queue_controls()
 
     def set_ui_to_idle_mode(self):
         self.download_button.configure(text=self.lang.get("download_button"))
         self.update_status(self.lang.get("ready_status"))
         if self.download_widget: self.download_widget.destroy(); self.download_widget = None
+        if self.queue_add_button: self.queue_add_button.grid_remove()
         self.download_thread = None
+        # Start next item from queue if present
+        if hasattr(self, 'pending_queue') and self.pending_queue:
+            next_url = self.pending_queue.pop(0)
+            try:
+                self.url_entry.delete(0, 'end'); self.url_entry.insert(0, next_url)
+            except Exception:
+                pass
+            self.start_download_thread()
+        else:
+            # Clear overlay controls
+            if getattr(self, 'queue_overlay', None) and self.queue_overlay.winfo_exists():
+                for child in self.queue_overlay.winfo_children():
+                    child.destroy()
 
     def update_status(self, text):
         if self.is_running and self.show_details_var.get():
             cleaned = re.sub(r'\x1B\[[0-?]*[ -/]*[@-~]', '', text).strip()
             self.status_label.configure(text=cleaned)
+
+    def add_to_queue(self):
+        try:
+            url = self.url_entry.get().strip()
+        except Exception:
+            url = ""
+        if not url:
+            return
+        if not hasattr(self, 'pending_queue'):
+            self.pending_queue = []
+        self.pending_queue.append(url)
+        try:
+            self.url_entry.delete(0, 'end')
+        except Exception:
+            pass
+        self._render_queue_controls()
+
+    def _render_queue_controls(self):
+        if not getattr(self, 'queue_overlay', None) or not self.queue_overlay.winfo_exists():
+            return
+        # Remove rows below main widget
+        for child in list(self.queue_overlay.winfo_children()):
+            gi = child.grid_info() if hasattr(child, 'grid_info') else {}
+            if gi and gi.get('row', 0) >= 1:
+                child.destroy()
+        max_show = 2
+        for idx, q in enumerate(self.pending_queue[:max_show], start=1):
+            lbl = ctk.CTkLabel(self.queue_overlay, text=f"{idx}. {q[:50]}" + ("..." if len(q)>50 else ""), anchor="w")
+            lbl.grid(row=idx, column=0, sticky="ew", padx=4, pady=2)
+        if len(self.pending_queue) > max_show:
+            more_btn = ctk.CTkButton(self.queue_overlay, text="More", height=28, command=self.open_downloads_window)
+            more_btn.grid(row=max_show+1, column=0, sticky="e", padx=4, pady=(4,0))
+        # History toggle button (down arrow)
+        hist_btn = ctk.CTkButton(self.queue_overlay, width=32, height=28, text="↓", command=self.open_downloads_window)
+        hist_btn.grid(row=0, column=1, padx=(6,0), pady=(6,0))
+
+    def open_downloads_window(self):
+        win = ctk.CTkToplevel(self)
+        try:
+            win.title("Downloads")
+        except Exception:
+            pass
+        win.geometry("600x400")
+        win.grid_columnconfigure(0, weight=1); win.grid_rowconfigure(0, weight=1)
+        frame = ctk.CTkFrame(win)
+        frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        frame.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(frame, text="History", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, columnspan=3, sticky="w", padx=10, pady=(10,6))
+        row = 1
+        items = list(getattr(self, 'download_history', []))
+        if not items:
+            ctk.CTkLabel(frame, text="No downloads yet").grid(row=row, column=0, padx=10, pady=10, sticky="w")
+            return
+        for item in reversed(items[-200:]):
+            status_color = ("#1f9340", "#32a852") if item.get('status') == 'success' else ("#d94848", "#e85151")
+            ctk.CTkLabel(frame, text=("✓" if item.get('status')=='success' else "✕"), text_color=status_color).grid(row=row, column=0, padx=10, pady=4)
+            ctk.CTkLabel(frame, text=item.get('title','...'), anchor="w").grid(row=row, column=1, sticky="ew", pady=4)
+            p = item.get('path') or ''
+            btn = ctk.CTkButton(frame, height=28, text="Open folder",
+                                 command=(lambda path=p: os.startfile(os.path.dirname(path)) if path and os.path.exists(path) else None))
+            btn.grid(row=row, column=2, padx=10, pady=4)
+            row += 1
 
     def update_ytdlp_in_thread(self):
         self.update_button.configure(state="disabled")
