@@ -13,7 +13,8 @@ Simple, polished Windows GUI for `yt-dlp`. Ships with `yt-dlp` and `ffmpeg` so i
 - Тёмная/светлая темы, поддержка CustomTkinter.
 
 ## Скачать
-- Рекомендуемый способ: раздел Releases — последняя версия: https://github.com/Nikitzima/YT-DLP-GUI/releases/latest
+- Прямая ссылка на .exe (latest): https://github.com/Nikitzima/YT-DLP-GUI/releases/latest/download/YT-DLP_GUI.exe
+- Страница Releases (все файлы): https://github.com/Nikitzima/YT-DLP-GUI/releases/latest
 - Альтернатива: архив в репозитории `release/` (portable-сборка с `.exe`).
 
 Запуск: распакуйте архив в удобную папку (не в `Program Files`), запустите `YT-DLP GUI.exe`.
@@ -46,4 +47,3 @@ pyinstaller "YT-DLP GUI.spec"
 
 ## Лицензия
 Если планируется публичное распространение — добавьте LICENSE. По умолчанию «все права защищены».
-
