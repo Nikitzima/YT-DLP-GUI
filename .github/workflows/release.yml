@@ -27,6 +27,16 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.10.*
 
+      - name: Download ffmpeg.exe (for bundling)
+        shell: pwsh
+        run: |
+          $ProgressPreference='SilentlyContinue'
+          $zip = "$env:RUNNER_TEMP/ffmpeg.zip"
+          Invoke-WebRequest -Uri https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP/ffmpeg" -Force
+          $ff = Get-ChildItem -Path "$env:RUNNER_TEMP/ffmpeg" -Filter ffmpeg.exe -Recurse | Select-Object -First 1
+          Copy-Item $ff.FullName -Destination "ffmpeg.exe"
+
       - name: Build with PyInstaller
         run: pyinstaller "YT-DLP GUI.spec"
 
@@ -37,22 +47,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist/bin | Out-Null
           Invoke-WebRequest -Uri https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile dist/bin/yt-dlp.exe
 
-      - name: Download ffmpeg.exe
-        shell: pwsh
-        run: |
-          $ProgressPreference='SilentlyContinue'
-          $zip = "$env:RUNNER_TEMP/ffmpeg.zip"
-          Invoke-WebRequest -Uri https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP/ffmpeg" -Force
-          $ff = Get-ChildItem -Path "$env:RUNNER_TEMP/ffmpeg" -Filter ffmpeg.exe -Recurse | Select-Object -First 1
-          Copy-Item $ff.FullName -Destination "dist/ffmpeg.exe"
-
       - name: Prepare artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Copy-Item "dist/YT-DLP GUI.exe" "artifacts/YT-DLP_GUI.exe" -Force
-          Compress-Archive -Path "dist/YT-DLP GUI.exe","dist/ffmpeg.exe","dist/bin","dist/config.json" -DestinationPath "artifacts/YT-DLP_GUI_portable_${env:GITHUB_REF_NAME}.zip" -Force
+          Compress-Archive -Path "dist/YT-DLP GUI.exe","dist/ffmpeg.exe","dist/bin" -DestinationPath "artifacts/YT-DLP_GUI_portable_${env:GITHUB_REF_NAME}.zip" -Force
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
