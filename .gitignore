@@ -12,6 +12,11 @@ venv/
 # Build artifacts
 build/
 dist/
+release/
+
+# Bundled binaries (download during CI)
+ffmpeg.exe
+bin/yt-dlp.exe
 
 # Logs
 logs/
@@ -24,6 +29,5 @@ logs/
 Thumbs.db
 .DS_Store
 
-# Archives at root (keep release/ tracked)
+# Archives at root
 YT-DLP_GUI.zip
-
