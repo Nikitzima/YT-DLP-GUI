@@ -1009,6 +1009,10 @@ class App(ctk.CTk):
             self.queue_overlay = ctk.CTkFrame(parent, fg_color="transparent")
             self.queue_overlay.place(relx=0.98, rely=0.03, anchor="ne")
         self.download_widget = DownloadQueueItem(self.queue_overlay, lang_manager=self.lang)
+        try:
+            self.download_widget.configure(fg_color="transparent")
+        except Exception:
+            pass
         self.download_widget.grid(row=0, column=0, sticky="ew")
         if self.queue_add_button:
             self.queue_add_button.grid()
