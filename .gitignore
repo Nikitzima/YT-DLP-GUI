@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Envs
+.env
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+
+# Logs
+logs/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Archives at root (keep release/ tracked)
+YT-DLP_GUI.zip
+

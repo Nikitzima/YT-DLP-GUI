@@ -1,0 +1,13 @@
+{
+    "download_path": "C:\\Users\\Yuric\\Downloads",
+    "theme": "codex",
+    "language": "English",
+    "show_details": false,
+    "video_quality": "1080p",
+    "video_codec": "auto",
+    "file_container": "mp4",
+    "audio_format": "auto",
+    "audio_bitrate": "192k",
+    "network_mode": "Auto",
+    "downloader": "builtin"
+}
